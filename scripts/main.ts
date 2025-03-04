@@ -2,11 +2,15 @@ import dotenv from "dotenv";
 import { PuppeteerWebBaseLoader, Browser, Page } from '@langchain/community/document_loaders/web/puppeteer';
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import OpenAI from "openai";
+import { Pinecone, PineconeRecord } from "@pinecone-database/pinecone";
 
 dotenv.config();
 
 const {
   OPENAI_API_KEY,
+  PINECONE_API_KEY,
+  PINECONE_INDEX_NAME,
+  PINECONE_INDEX_HOST,
 } = process.env;
 
 const scrapeUrls = [
@@ -49,7 +53,7 @@ const splitter = new RecursiveCharacterTextSplitter({
 });
 
 const convertVector = async (pageData: string[]) => {
-  const vectors = [] as Number[][];
+  const vectors = [] as number[][];
   const chunks = [] as string[];
   for (const page of pageData) {
     const pageChunks = await splitter.splitText(page);
@@ -69,10 +73,33 @@ const convertVector = async (pageData: string[]) => {
   return { vectors, chunks };
 };
 
+const pinecone = new Pinecone({
+  apiKey: PINECONE_API_KEY || '',
+});
+const index = pinecone.index(PINECONE_INDEX_NAME || '', PINECONE_INDEX_HOST || '');
+
+const storeVectors = async (vectors: number[][], chunks: string[]) => {
+  const upserts = vectors.map((vector, i) => {
+    return {
+      id: `vector-${i}`,
+      values: vector,
+      metadata: { text: chunks[i] },
+    } as PineconeRecord;
+  });
+
+  try {
+    await index.upsert(upserts);
+  } catch (error) {
+    console.error(error);
+  }
+};
 
 const main = async () => {
   const pageData = await scrapePage();
-  await convertVector(pageData);
+  const { vectors, chunks } = await convertVector(pageData);
+  if (vectors && chunks) {
+    await storeVectors(vectors, chunks);
+  }
 };
 
 main();
