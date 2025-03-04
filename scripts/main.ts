@@ -70,7 +70,9 @@ const convertVector = async (pageData: string[]) => {
 };
 
 
-(async () => {
+const main = async () => {
   const pageData = await scrapePage();
   await convertVector(pageData);
-})();
+};
+
+main();
